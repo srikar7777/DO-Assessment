@@ -1,10 +1,11 @@
 name: CI/CD
 
 on:
+  # Job 1 (test) runs on every branch and every pull request.
+  # Jobs 2 and 3 are additionally gated on main by their `if:` conditions.
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
-    branches: [main]
 
 env:
   IMAGE_NAME: myservice
