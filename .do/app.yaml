@@ -2,7 +2,8 @@
 # Apply with:  doctl apps create --spec .do/app.yaml
 # Update with: doctl apps update <APP_ID> --spec .do/app.yaml
 name: myservice
-region: nyc
+# Co-located with the Spaces bucket (sfo3) to avoid cross-region latency.
+region: sfo
 
 services:
   - name: api
@@ -70,39 +71,42 @@ services:
         value: "INFO"
 
       # -- Storage ----------------------------------------------------------
-      # App Platform containers have ephemeral disks: anything written to
-      # STORAGE_DIR is lost on redeploy or restart. Switch STORAGE_BACKEND to
-      # "s3" and fill in the Spaces secrets below for durable storage.
+      # Durable object storage in DigitalOcean Spaces. App Platform container
+      # disks are ephemeral, so STORAGE_DIR is only a fallback for local runs.
       - key: STORAGE_BACKEND
         scope: RUN_TIME
-        value: "local"
+        value: "s3"
 
       - key: STORAGE_DIR
         scope: RUN_TIME
         value: "/app/storage"
 
+      # Region endpoint only — boto3 prepends the bucket name itself.
       - key: S3_ENDPOINT_URL
         scope: RUN_TIME
-        value: ""
+        value: "https://sfo3.digitaloceanspaces.com"
 
       - key: S3_REGION
         scope: RUN_TIME
-        value: "nyc3"
+        value: "sfo3"
 
       - key: S3_BUCKET
         scope: RUN_TIME
-        value: ""
+        value: "srikar-thumbnails"
 
       - key: S3_ACCESS_KEY_ID
         scope: RUN_TIME
         type: SECRET
-        value: ""
+        value: "replace-with-spaces-access-key"
 
       - key: S3_SECRET_ACCESS_KEY
         scope: RUN_TIME
         type: SECRET
-        value: ""
+        value: "replace-with-spaces-secret-key"
 
+      # Left blank on purpose: objects are private, so download_url points at
+      # the API, which streams bytes after authorization. Setting this to the
+      # CDN host would hand out URLs that 403 until objects are public-read.
       - key: S3_PUBLIC_BASE_URL
         scope: RUN_TIME
         value: ""
