@@ -9,7 +9,7 @@ on:
 
 env:
   IMAGE_NAME: myservice
-  DO_APP_NAME: myservice
+  DO_APP_NAME: do-assessment
   PYTHON_VERSION: "3.11"
 
 jobs:
