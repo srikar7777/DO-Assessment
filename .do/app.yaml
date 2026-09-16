@@ -1,0 +1,133 @@
+# DigitalOcean App Platform specification.
+# Apply with:  doctl apps create --spec .do/app.yaml
+# Update with: doctl apps update <APP_ID> --spec .do/app.yaml
+name: myservice
+region: nyc
+
+services:
+  - name: api
+    # Image is pushed to DOCR by the GitHub Actions build job.
+    image:
+      registry_type: DOCR
+      repository: myservice
+      tag: latest
+      deploy_on_push:
+        enabled: false
+
+    instance_size_slug: basic-xxs
+    instance_count: 1
+
+    # Must match the port uvicorn binds inside the container. App Platform
+    # also injects PORT, which this service intentionally does not read.
+    http_port: 8000
+
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 30
+      timeout_seconds: 10
+      failure_threshold: 3
+      success_threshold: 1
+
+    routes:
+      - path: /
+
+    envs:
+      # -- Secrets ---------------------------------------------------------
+      # Set the real values with:
+      #   doctl apps update <APP_ID> --spec .do/app.yaml
+      # or in the App Platform UI. Never commit real values here.
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        # Use the postgresql:// scheme (not postgres://) for SQLAlchemy.
+        value: "postgresql://user:password@host:25060/dbname?sslmode=require"
+
+      - key: API_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: "replace-with-a-generated-api-key"
+
+      # -- Application identity --------------------------------------------
+      - key: APP_NAME
+        scope: RUN_TIME
+        value: "myservice"
+
+      - key: APP_VERSION
+        scope: RUN_TIME
+        value: "0.1.0"
+
+      - key: APP_PORT
+        scope: RUN_TIME
+        value: "8000"
+
+      - key: ENVIRONMENT
+        scope: RUN_TIME
+        value: "production"
+
+      - key: LOG_LEVEL
+        scope: RUN_TIME
+        value: "INFO"
+
+      # -- Storage ----------------------------------------------------------
+      # App Platform containers have ephemeral disks: anything written to
+      # STORAGE_DIR is lost on redeploy or restart. Switch STORAGE_BACKEND to
+      # "s3" and fill in the Spaces secrets below for durable storage.
+      - key: STORAGE_BACKEND
+        scope: RUN_TIME
+        value: "local"
+
+      - key: STORAGE_DIR
+        scope: RUN_TIME
+        value: "/app/storage"
+
+      - key: S3_ENDPOINT_URL
+        scope: RUN_TIME
+        value: ""
+
+      - key: S3_REGION
+        scope: RUN_TIME
+        value: "nyc3"
+
+      - key: S3_BUCKET
+        scope: RUN_TIME
+        value: ""
+
+      - key: S3_ACCESS_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+
+      - key: S3_SECRET_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+
+      - key: S3_PUBLIC_BASE_URL
+        scope: RUN_TIME
+        value: ""
+
+      # -- Limits and access control ----------------------------------------
+      - key: CORS_ORIGINS
+        scope: RUN_TIME
+        value: "https://example.com"
+
+      - key: RATE_LIMIT_REQUESTS_PER_MINUTE
+        scope: RUN_TIME
+        value: "60"
+
+      - key: MAX_UPLOAD_BYTES
+        scope: RUN_TIME
+        value: "10485760"
+
+      - key: MAX_IMAGES_PER_REQUEST
+        scope: RUN_TIME
+        value: "10"
+
+      - key: DEFAULT_THUMBNAIL_QUALITY
+        scope: RUN_TIME
+        value: "85"
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED

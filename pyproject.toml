@@ -1,0 +1,56 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (unused imports, undefined names)
+    "I",   # isort (import ordering)
+    "B",   # flake8-bugbear (likely bugs)
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade (modern syntax)
+    "SIM", # flake8-simplify
+    "ANN", # flake8-annotations (type hints on every signature)
+    "D",   # pydocstyle (docstrings)
+    "T20", # flake8-print (no print statements)
+]
+ignore = [
+    "D203",  # conflicts with D211
+    "D213",  # conflicts with D212
+    "ANN401",  # allow typing.Any where genuinely needed
+    "UP017",  # prefer datetime.timezone.utc over datetime.UTC for explicitness
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection API is designed around callables in defaults.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Body",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests document themselves through descriptive names and docstrings on each
+# test; module-level dunder docs and annotated fixtures are not required.
+"tests/*" = ["ANN001", "ANN201"]
+"app/models/__init__.py" = ["F401"]
+"app/core/__init__.py" = ["F401"]
+"app/services/__init__.py" = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Any warning is an error: keeps the codebase free of deprecations.
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["*/__init__.py"]

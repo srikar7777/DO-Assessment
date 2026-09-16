@@ -1,0 +1,145 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE_NAME: myservice
+  DO_APP_NAME: myservice
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Job 1: lint and test on every push and pull request
+  # -------------------------------------------------------------------------
+  test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite:///./ci.db
+      APP_NAME: myservice
+      APP_VERSION: 0.1.0
+      APP_PORT: "8000"
+      ENVIRONMENT: development
+      LOG_LEVEL: INFO
+      STORAGE_BACKEND: local
+      STORAGE_DIR: ./ci-storage
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Lint
+        run: ruff check app/ tests/
+
+      - name: Test with coverage report
+        run: pytest tests/ -v --cov=app --cov-report=term-missing
+
+      - name: Enforce coverage threshold
+        run: pytest tests/ --cov=app --cov-fail-under=70
+
+  # -------------------------------------------------------------------------
+  # Job 2: build the linux/amd64 image and push it to DOCR (main only)
+  # -------------------------------------------------------------------------
+  build:
+    name: Build and push image
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DigitalOcean Container Registry
+        run: doctl registry login --expiry-seconds 600
+
+      - name: Build and push
+        run: |
+          REGISTRY="registry.digitalocean.com/${{ secrets.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag "$REGISTRY:latest" \
+            --tag "$REGISTRY:${{ github.sha }}" \
+            --cache-from "type=gha" \
+            --cache-to "type=gha,mode=max" \
+            --push .
+
+  # -------------------------------------------------------------------------
+  # Job 3: trigger an App Platform deployment and verify it (main only)
+  # -------------------------------------------------------------------------
+  deploy:
+    name: Deploy to App Platform
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Resolve App ID
+        id: app
+        run: |
+          APP_ID=$(doctl apps list --format ID,Spec.Name --no-header \
+            | grep "${{ env.DO_APP_NAME }}" | awk '{print $1}')
+          if [ -z "$APP_ID" ]; then
+            echo "No App Platform app named ${{ env.DO_APP_NAME }} was found"
+            exit 1
+          fi
+          echo "app_id=$APP_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Create deployment
+        run: doctl apps create-deployment ${{ steps.app.outputs.app_id }} --wait=false
+
+      - name: Wait for deployment to become ACTIVE
+        run: |
+          APP_ID="${{ steps.app.outputs.app_id }}"
+          for attempt in $(seq 1 20); do
+            PHASE=$(doctl apps list-deployments "$APP_ID" \
+              --format Phase --no-header | head -n 1)
+            echo "Attempt $attempt/20: phase=$PHASE"
+            case "$PHASE" in
+              ACTIVE)
+                echo "Deployment succeeded"
+                exit 0
+                ;;
+              ERROR|CANCELED)
+                echo "Deployment failed with phase $PHASE"
+                exit 1
+                ;;
+            esac
+            sleep 15
+          done
+          echo "Deployment did not reach ACTIVE within the timeout"
+          exit 1
+
+      - name: Verify health endpoint
+        run: |
+          APP_URL=$(doctl apps get ${{ steps.app.outputs.app_id }} \
+            --format DefaultIngress --no-header)
+          echo "Checking $APP_URL/health"
+          # DefaultIngress already includes the https:// scheme.
+          curl --fail --silent --show-error --retry 5 --retry-delay 10 \
+            "$APP_URL/health"

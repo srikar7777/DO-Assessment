@@ -1,0 +1,26 @@
+# Keep build context small and avoid leaking local state into the image
+.git/
+.github/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+tests/
+storage/
+*.db
+*.sqlite3
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+README.md
+Makefile
+docker-compose.yml
+.do/

@@ -1,0 +1,61 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Test / coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+test_*.db
+
+# Uploads / generated thumbnails (local storage)
+uploads/
+thumbnails/
+media/
+storage/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+*.log
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# OS
+Thumbs.db

@@ -1,0 +1,32 @@
+# Web framework
+fastapi==0.116.1
+# Pinned explicitly: anyio >= 4.9 deprecates the anyio.abc.BlockingPortal alias
+# that Starlette's TestClient still imports, which emits a DeprecationWarning.
+anyio==4.8.0
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+
+# Validation / settings
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+
+# Image processing
+Pillow==11.1.0
+
+# Object storage (DigitalOcean Spaces / S3-compatible)
+boto3==1.35.99
+
+# Logging
+structlog==24.4.0
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+httpx==0.28.1
+
+# Linting
+ruff==0.8.6

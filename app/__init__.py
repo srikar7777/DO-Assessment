@@ -1,0 +1,1 @@
+"""Image thumbnail generation service."""
