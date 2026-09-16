@@ -30,8 +30,57 @@ the event loop so the service stays responsive under simultaneous client request
 
 ## Architecture
 
+### The one-minute version
+
+Four boxes. A request enters at the left and the work fans out to two places at the right.
+
+```
+                 ┌──────────────┐
+  client  ──────▶│    ROUTES    │   speaks HTTP. parses the upload,
+   POST          │  app/routes  │   returns the response. no logic.
+  an image       └──────┬───────┘
+                        │ calls
+                        ▼
+                 ┌──────────────┐
+                 │   SERVICE    │   does the actual work: validate the file,
+                 │ app/services │   resize with Pillow, save the results.
+                 └──┬────────┬──┘
+           writes   │        │   writes
+          metadata  │        │   pixels
+                    ▼        ▼
+            ┌───────────┐  ┌───────────┐
+            │ POSTGRES  │  │  SPACES   │
+            │  rows     │  │  files    │
+            └───────────┘  └───────────┘
+```
+
+**The one idea worth remembering: metadata and pixels are stored separately.** The database
+holds small rows describing each image and thumbnail (dimensions, size, format, status).
+The image bytes themselves live in object storage, and the database row just keeps a
+`storage_key` pointing at them. Databases are bad at holding megabytes of binary; object
+storage is cheap and scales without limit.
+
+Two consequences fall out of that split, and they are the two things worth saying out loud:
+
+1. **Routes never touch the database, and the service never touches HTTP.** The service
+   raises plain domain errors like `ImageTooLarge`; the route is what decides that means
+   a `413`. So the business logic can be tested without a web server, and swapping the
+   transport would not touch it.
+2. **Storage is an interface, not a vendor.** `StorageBackend` has two implementations,
+   local disk for development and S3 for production. Which one you get is an environment
+   variable, so running locally needs no cloud account and no code changes.
+
+Resizing is CPU-bound and Pillow releases the GIL, so each resize runs in a worker thread
+rather than on the event loop, and a batch upload processes its files concurrently. That's
+the whole concurrency story — [details below](#concurrency-model).
+
+### The detailed version
+
 The service is a layered FastAPI application. Each layer may only call the layer beneath
 it: routes never touch the database, and services never import anything HTTP-specific.
+
+<details>
+<summary>Expand the full deployment and layer diagram</summary>
 
 ```
                                    ┌─────────────────┐
@@ -90,10 +139,7 @@ it: routes never touch the database, and services never import anything HTTP-spe
                             └──────────────────────┘   └────────────────────────┘
 ```
 
-**Separation of bytes and metadata** is the central design choice: the database stores
-only rows describing images and thumbnails, while the actual pixels live in the storage
-backend, referenced by a `storage_key`. Swapping local disk for Spaces is a config change,
-not a code change.
+</details>
 
 ### Module map
 
@@ -120,8 +166,31 @@ app/
 
 ## Request lifecycle
 
+### The one-minute version
+
+What happens when you `POST /v1/images` with one file and three presets:
+
+```
+  1. check the API key and the rate limit          → 401 / 429 if either fails
+  2. validate the form fields with Pydantic        → 422 if anything is out of range
+  3. read the upload, confirm it's really an image → 400 if not, 413 if too big
+  4. save the original to object storage, write the Image row  (status = processing)
+  5. for each of the 3 presets:
+        resize in a worker thread, upload the result, write a Thumbnail row
+  6. mark the Image "ready" and return 201 with all the metadata
+```
+
+Steps 1–3 are cheap and happen on the event loop. Step 5 is the expensive part, so it runs
+off the event loop in threads. If a batch has several files, step 3 onward runs for all of
+them concurrently and one bad file fails on its own without taking down the others.
+
+### The detailed version
+
 The full path of `POST /v1/images` with three presets. Note where control crosses from the
 async event loop into the worker thread pool and back.
+
+<details>
+<summary>Expand the full sequence diagram</summary>
 
 ```
 CLIENT                ROUTE                 SERVICE              THREAD POOL      STORAGE / DB
@@ -193,6 +262,8 @@ CLIENT                ROUTE                 SERVICE              THREAD POOL    
   │  {uploaded, failed, │                                                                │
   │   images[]}         │                                                                │
 ```
+
+</details>
 
 ### Retrieval path
 

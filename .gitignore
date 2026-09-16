@@ -59,3 +59,8 @@ pip-wheel-metadata/
 
 # OS
 Thumbs.db
+
+# Local scratch images used for manual API testing
+pic*.png
+pic*.jpg
+sample.jpg
